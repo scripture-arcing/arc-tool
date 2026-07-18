@@ -1,0 +1,961 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hierarchical Scripture Arcing Workspace</title>
+    <!-- 1. External Libraries -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Icons" rel="stylesheet">
+    <!-- 2. CSS Design System -->
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .arc-line {
+            fill: none;
+            stroke: #64748b;
+            stroke-width: 2;
+            transition: stroke 0.2s, stroke-width 0.2s;
+            pointer-events: stroke;
+        }
+        .arc-line.active {
+            stroke-width: 3.5;
+        }
+        .arc-line:hover {
+            stroke-width: 3;
+            cursor: pointer;
+        }
+        .word-span {
+            display: inline-block;
+            margin-right: 8px;
+        }
+        .word-divider {
+            display: inline-block;
+            width: 0;
+            height: 14px;
+            vertical-align: middle;
+            cursor: pointer;
+            position: relative;
+            z-index: 10;
+        }
+        .word-divider::before {
+            content: '';
+            position: absolute;
+            left: -4px;
+            top: -2px;
+            width: 8px;
+            height: 18px;
+            background: transparent;
+        }
+        .word-divider:hover::after {
+            content: '';
+            position: absolute;
+            left: -1px;
+            top: 0;
+            width: 2px;
+            height: 100%;
+            background-color: #ef4444;
+        }
+        .drag-hover {
+            transform: scale(1.1);
+        }
+        #custom-cursor-label {
+            position: fixed;
+            pointer-events: none;
+            z-index: 9999;
+            transform: translate(12px, 12px);
+            font-size: 10px;
+            font-weight: 700;
+            padding: 3px 8px;
+            border-radius: 4px;
+            color: white;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            display: none;
+        }
+        body.palette-active .interactive-target-slot:not(.has-role) {
+            border: 2px dashed #cbd5e1 !important;
+            background-color: rgba(248, 250, 252, 0.8) !important;
+        }
+        @media print {
+            body {
+                background: white !important;
+                color: black !important;
+                padding: 0 !important;
+                margin: 0 !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
+            header, #palette-panel, .bg-slate-100, button, .word-divider, .undo-btn, .merge-btn, #custom-cursor-label {
+                display: none !important;
+            }
+            .container, .max-w-full {
+                border: none !important;
+                box-shadow: none !important;
+                padding: 0 !important;
+                margin: 0 !important;
+                max-width: 100% !important;
+                width: 100% !important;
+            }
+            .flex-1.flex.flex-col {
+                display: flex !important;
+                flex-direction: row !important;
+                overflow: visible !important;
+                min-height: auto !important;
+            }
+            #proposition-panel {
+                width: 50% !important;
+                max-height: none !important;
+                overflow: visible !important;
+                border-right: 1px solid #dee2e6 !important;
+            }
+            #canvas-panel {
+                width: 50% !important;
+                max-height: none !important;
+                overflow: visible !important;
+                background: white !important;
+            }
+            #arc-canvas {
+                width: 100% !important;
+                height: 100% !important;
+                min-height: 800px;
+            }
+            .absolute.bg-rose-500 {
+                display: none !important;
+            }
+            .absolute {
+                color: black !important;
+            }
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col p-2 md:p-4">
+
+    <div id="custom-cursor-label"></div>
+
+    <div class="max-w-full w-full mx-auto bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden flex flex-col min-h-[90vh]">
+        
+        <header class="bg-slate-900 text-white p-4 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 border-b border-slate-800">
+            <div>
+                <h1 class="text-xl font-bold flex items-center gap-2">
+                    <span class="material-icons text-blue-400 font-bold">account_tree</span>
+                    Hierarchical Scripture Arcing
+                </h1>
+                <p class="text-slate-400 text-xs mt-0.5" id="passage-title">KJV Translation Engine active</p>
+            </div>
+            
+            <div class="flex flex-wrap gap-2 w-full lg:w-auto items-center">
+                <input type="text" id="passage-ref" value="1 Thessalonians 4:1-8" 
+                       class="bg-slate-800 text-white border border-slate-700 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 w-full lg:w-48"
+                       placeholder="e.g., Romans 1:16-17">
+                <button onclick="fetchKJV()" class="bg-blue-600 hover:bg-blue-500 text-white font-medium px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-1">
+                    <span class="material-icons text-xs">download</span> Fetch KJV
+                </button>
+                <button onclick="togglePasteModal(true)" class="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-1">
+                    <span class="material-icons text-xs">content_paste</span> Custom Paste
+                </button>
+
+                <div class="relative inline-block text-left z-50">
+                    <button onclick="toggleExportDropdown(event)" class="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-1">
+                        <span class="material-icons text-xs">share</span> Export / Print
+                    </button>
+                    <div id="export-dropdown" class="hidden absolute right-0 mt-2 w-48 rounded-lg shadow-lg bg-white ring-1 ring-black ring-opacity-5 divide-y divide-slate-100">
+                        <div class="py-1">
+                            <button onclick="printWorkspace()" class="group flex items-center px-4 py-2.5 text-xs text-slate-700 hover:bg-slate-100 hover:text-slate-900 w-full text-left">
+                                <span class="material-icons mr-2 text-sm text-slate-400">print</span> Print or Save PDF
+                            </button>
+                        </div>
+                        <div class="py-1">
+                            <button onclick="exportWorkspaceJSON()" class="group flex items-center px-4 py-2.5 text-xs text-slate-700 hover:bg-slate-100 hover:text-slate-900 w-full text-left">
+                                <span class="material-icons mr-2 text-sm text-slate-400">download</span> Export File (.json)
+                            </button>
+                            <button onclick="triggerJsonImport()" class="group flex items-center px-4 py-2.5 text-xs text-slate-700 hover:bg-slate-100 hover:text-slate-900 w-full text-left">
+                                <span class="material-icons mr-2 text-sm text-slate-400">upload</span> Import File (.json)
+                            </button>
+                            <input type="file" id="json-import-file" class="hidden" accept=".json" onchange="importWorkspaceJSON(event)">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <div id="toast" class="hidden bg-blue-50 border-b border-blue-200 px-6 py-2 text-xs text-blue-700 flex items-center gap-2">
+            <span class="material-icons text-xs">info</span>
+            <span id="toast-text"></span>
+        </div>
+
+        <div class="bg-slate-100 p-3 border-b border-slate-200 flex flex-wrap gap-3 items-center justify-between">
+            <div class="flex items-center gap-1.5 bg-white p-1 rounded-xl border border-slate-200">
+                <button id="mode-split" onclick="setMode('split')" class="px-3 py-1.5 text-xs font-semibold rounded-lg flex items-center gap-1 transition">
+                    <span class="material-icons text-xs">content_cut</span> Split/Merge Text
+                </button>
+                <button id="mode-arc" onclick="setMode('arc')" class="px-3 py-1.5 text-xs font-semibold rounded-lg text-slate-600 hover:text-slate-900 transition flex items-center gap-1">
+                    <span class="material-icons text-xs">bubble_chart</span> Build Arcs
+                </button>
+            </div>
+
+            <!-- Contextual Trigger Button shown only in Arc Mode -->
+            <div id="arc-controls" class="hidden">
+                <button onclick="createArc()" id="link-btn" class="opacity-50 pointer-events-none bg-slate-400 text-white font-semibold px-4 py-1.5 rounded-lg text-xs transition flex items-center gap-1">
+                    <span class="material-icons text-xs">add_link</span> Link Selection <span id="selection-counter" class="ml-1 bg-black/20 px-1.5 py-0.5 rounded-full text-[10px]">0</span>
+                </button>
+            </div>
+
+            <div class="flex gap-1.5">
+                <button onclick="undo()" class="undo-btn bg-white hover:bg-slate-50 border border-slate-200 px-2.5 py-1.5 rounded-lg text-xs font-medium transition flex items-center gap-1" title="Undo action">
+                    <span class="material-icons text-xs">undo</span> Undo Action
+                </button>
+                <button onclick="resetPassage()" class="bg-white hover:bg-slate-50 border border-slate-200 text-rose-600 px-2.5 py-1.5 rounded-lg text-xs font-medium transition flex items-center gap-1">
+                    <span class="material-icons text-xs text-rose-500">restart_alt</span> Reset Canvas
+                </button>
+            </div>
+        </div>
+
+        <div class="flex-1 flex flex-col lg:flex-row relative min-h-[650px]" onclick="handleCanvasBackgroundClick(event)">
+            
+            <div id="palette-panel" class="hidden lg:flex w-full lg:w-56 bg-slate-50 border-r border-slate-200 p-3 flex-col gap-3 overflow-y-auto max-h-[80vh]">
+                <div class="flex justify-between items-center border-b pb-1">
+                    <h3 class="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                        <span class="material-icons text-xs">palette</span> Relationship Palette
+                    </h3>
+                    <button id="clear-palette-selection-btn" onclick="clearActivePaletteSelection()" class="hidden text-[9px] bg-slate-200 hover:bg-slate-300 text-slate-700 px-1 py-0.5 rounded font-medium">Cancel</button>
+                </div>
+                <p class="text-[10px] text-slate-400 leading-normal" id="palette-instructions">Click a tag to select, then click any bracket position slot to assign it.</p>
+                
+                <div class="flex flex-col gap-1.5" id="section-coord">
+                    <h4 class="text-[10px] font-semibold border-b pb-0.5" style="color: #3B82F6;">Coordinate</h4>
+                    <div class="grid grid-cols-2 gap-1" id="coord-palette"></div>
+                </div>
+
+                <div class="flex flex-col gap-1.5" id="section-sub">
+                    <h4 class="text-[10px] font-semibold text-gray-600 border-b pb-0.5">Subordinate</h4>
+                    <div class="grid grid-cols-2 gap-1" id="sub-palette"></div>
+                </div>
+
+                <div class="flex flex-col gap-1.5" id="section-restatement">
+                    <h4 class="text-[10px] font-semibold border-b pb-0.5" style="color: #22C55E;">Subordinate: Support by Restatement</h4>
+                    <div class="grid grid-cols-2 gap-1" id="restatement-palette"></div>
+                </div>
+
+                <div class="flex flex-col gap-1.5" id="section-distinct">
+                    <h4 class="text-[10px] font-semibold border-b pb-0.5" style="color: #A855F7;">Subordinate: Support by Distinct Statement</h4>
+                    <div class="grid grid-cols-2 gap-1" id="distinct-palette"></div>
+                </div>
+
+                <div class="flex flex-col gap-1.5" id="section-contrary">
+                    <h4 class="text-[10px] font-semibold border-b pb-0.5" style="color: #F59E0B;">Subordinate: Support by Contrary Statement</h4>
+                    <div class="grid grid-cols-2 gap-1" id="contrary-palette"></div>
+                </div>
+            </div>
+
+            <div class="flex-1 p-4 border-r border-slate-200 overflow-y-auto max-h-[80vh]" id="proposition-panel">
+                <div class="flex gap-4 items-center mb-2 px-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                    <div class="flex-1">Proposition Stack</div>
+                </div>
+                <div class="space-y-1.5" id="proposition-stack"></div>
+            </div>
+
+            <div class="w-full lg:w-[48%] bg-slate-50/50 relative overflow-x-auto min-h-[450px]" id="canvas-panel">
+                <svg id="arc-canvas" class="absolute inset-0 w-full h-full min-w-[380px]" style="pointer-events: none;"></svg>
+                <div id="interactive-labels" class="absolute inset-0 min-w-[380px] overflow-hidden pointer-events-none"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="paste-modal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 flex flex-col gap-4">
+            <div class="flex justify-between items-center">
+                <h3 class="text-lg font-bold text-slate-800">Paste Custom Passage</h3>
+                <button onclick="togglePasteModal(false)" class="text-slate-400 hover:text-slate-600">
+                    <span class="material-icons">close</span>
+                </button>
+            </div>
+            <textarea id="custom-text" class="w-full h-48 border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="Paste text here..."></textarea>
+            <div class="flex justify-end gap-2">
+                <button onclick="togglePasteModal(false)" class="bg-slate-100 hover:bg-slate-200 px-4 py-2 rounded-lg text-sm font-semibold transition">Cancel</button>
+                <button onclick="importCustomText()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-semibold transition">Load Custom Passage</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let propositions = [];
+        let nodes = [];
+        let arcs = [];
+        let appMode = "split";
+        let selectedNodes = [];
+        let heldPaletteRoleId = null; 
+        let stateHistory = [];
+
+        const relationshipDefs = [
+            { id: "S", label: "Series (S)", cat: "coord", hex: "#3B82F6", color: "bg-blue-500 text-white border-blue-500 hover:bg-blue-600" },
+            { id: "P", label: "Progression (P)", cat: "coord", hex: "#3B82F6", color: "bg-blue-500 text-white border-blue-500 hover:bg-blue-600" },
+            { id: "A", label: "Alternative (A)", cat: "coord", hex: "#3B82F6", color: "bg-blue-500 text-white border-blue-500 hover:bg-blue-600" },
+            { id: "Act", label: "Action (Act)", cat: "sub", hex: "#4b5563", color: "bg-gray-600 text-white border-gray-600 hover:bg-gray-700" },
+            { id: "Man", label: "Manner (Man)", cat: "restatement", hex: "#22C55E", color: "bg-green-500 text-white border-green-500 hover:bg-green-600" },
+            { id: "Cf", label: "Comparison (Cf)", cat: "restatement", hex: "#22C55E", color: "bg-green-500 text-white border-green-500 hover:bg-green-600" },
+            { id: "+", label: "Positive (+)", cat: "restatement", hex: "#22C55E", color: "bg-green-500 text-white border-green-500 hover:bg-green-600" },
+            { id: "-", label: "Negative (-)", cat: "restatement", hex: "#22C55E", color: "bg-green-500 text-white border-green-500 hover:bg-green-600" },
+            { id: "Id", label: "Idea (Id)", cat: "restatement", hex: "#22C55E", color: "bg-green-500 text-white border-green-500 hover:bg-green-600" },
+            { id: "Exp", label: "Explanation (Exp)", cat: "restatement", hex: "#22C55E", color: "bg-green-500 text-white border-green-500 hover:bg-green-600" },
+            { id: "Q", label: "Question (Q)", cat: "restatement", hex: "#22C55E", color: "bg-green-500 text-white border-green-500 hover:bg-green-600" },
+            { id: "A_sub", label: "Answer (A)", cat: "restatement", hex: "#22C55E", color: "bg-green-500 text-white border-green-500 hover:bg-green-600" },
+            { id: "G", label: "Ground (G)", cat: "distinct", hex: "#A855F7", color: "bg-purple-500 text-white border-purple-500 hover:bg-purple-600" },
+            { id: "∴", label: "Inference (∴)", cat: "distinct", hex: "#A855F7", color: "bg-purple-500 text-white border-purple-500 hover:bg-purple-600" },
+            { id: "BL", label: "Bilateral (BL)", cat: "distinct", hex: "#A855F7", color: "bg-purple-500 text-white border-purple-500 hover:bg-purple-600" },
+            { id: "Res", label: "Result (Res)", cat: "distinct", hex: "#A855F7", color: "bg-purple-500 text-white border-purple-500 hover:bg-purple-600" },
+            { id: "Pur", label: "Purpose (Pur)", cat: "distinct", hex: "#A855F7", color: "bg-purple-500 text-white border-purple-500 hover:bg-purple-600" },
+            { id: "If", label: "If (If)", cat: "distinct", hex: "#A855F7", color: "bg-purple-500 text-white border-purple-500 hover:bg-purple-600" },
+            { id: "Then", label: "Then (Then)", cat: "distinct", hex: "#A855F7", color: "bg-purple-500 text-white border-purple-500 hover:bg-purple-600" },
+            { id: "T", label: "Temporal (T)", cat: "distinct", hex: "#A855F7", color: "bg-purple-500 text-white border-purple-500 hover:bg-purple-600" },
+            { id: "L", label: "Locative (L)", cat: "distinct", hex: "#A855F7", color: "bg-purple-500 text-white border-purple-500 hover:bg-purple-600" },
+            { id: "Csv", label: "Concessive (Csv)", cat: "contrary", hex: "#F59E0B", color: "bg-amber-500 text-white border-amber-500 hover:bg-amber-600" },
+            { id: "Sit", label: "Situation (Sit)", cat: "contrary", hex: "#F59E0B", color: "bg-amber-500 text-white border-amber-500 hover:bg-amber-600" },
+            { id: "Resp", label: "Response (Resp)", cat: "contrary", hex: "#F59E0B", color: "bg-amber-500 text-white border-amber-500 hover:bg-amber-600" }
+        ];
+
+        const defaultReferenceText = `Finally then, brethren, we request and exhort you in the Lord Jesus, that as you received from us instruction as to how you ought to walk and please God (just as you actually do walk), that you excel still more. For you know what commandments we gave you through the Lord Jesus. For this is the will of God, your sanctification; that is, that you abstain from sexual immorality; that each of you know how to possess his own vessel in sanctification and honor, not in lustful passion, like the Gentiles who do not know God; and that no man transgress and defraud his brother.`;
+
+        function isCenterPlacementType(roleId) {
+            if (!roleId) return false;
+            const rDef = relationshipDefs.find(r => r.id === roleId);
+            return rDef && (rDef.cat === 'coord' || rDef.id === 'BL');
+        }
+
+        function saveState() {
+            if (stateHistory.length > 30) stateHistory.shift(); 
+            stateHistory.push({
+                propositions: JSON.parse(JSON.stringify(propositions)),
+                arcs: JSON.parse(JSON.stringify(arcs)),
+                nodes: JSON.parse(JSON.stringify(nodes)),
+                selectedNodes: [...selectedNodes]
+            });
+        }
+
+        function undo() {
+            if (stateHistory.length === 0) {
+                showToast("Nothing to undo.", true);
+                return;
+            }
+            const prevState = stateHistory.pop();
+            propositions = prevState.propositions;
+            arcs = prevState.arcs;
+            nodes = prevState.nodes;
+            selectedNodes = prevState.selectedNodes;
+
+            renderWorkspace();
+            updateSelectionContext();
+            showToast("Undo applied successfully.");
+        }
+
+        function toggleExportDropdown(event) {
+            event.stopPropagation();
+            document.getElementById("export-dropdown").classList.toggle("hidden");
+        }
+
+        window.addEventListener("click", () => {
+            const dropdown = document.getElementById("export-dropdown");
+            if (dropdown) dropdown.classList.add("hidden");
+        });
+
+        function printWorkspace() { window.print(); }
+
+        function exportWorkspaceJSON() {
+            const passageName = document.getElementById("passage-ref").value.trim() || "untitled-passage";
+            const payload = { passage: passageName, propositions, arcs, nodes, selectedNodes };
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(payload));
+            const downloadAnchor = document.createElement('a');
+            downloadAnchor.setAttribute("href", dataStr);
+            downloadAnchor.setAttribute("download", `arcing-${passageName.toLowerCase().replace(/[^a-z0-9]/g, "-")}.json`);
+            document.body.appendChild(downloadAnchor);
+            downloadAnchor.click();
+            downloadAnchor.remove();
+        }
+
+        function triggerJsonImport() { document.getElementById("json-import-file").click(); }
+
+        function importWorkspaceJSON(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const parsed = JSON.parse(e.target.result);
+                    saveState();
+                    propositions = parsed.propositions;
+                    arcs = parsed.arcs;
+                    nodes = parsed.nodes;
+                    selectedNodes = parsed.selectedNodes || [];
+                    if (parsed.passage) {
+                        document.getElementById("passage-ref").value = parsed.passage;
+                        document.getElementById("passage-title").textContent = `Currently Mapping: ${parsed.passage} (KJV)`;
+                    }
+                    renderWorkspace();
+                    updateSelectionContext();
+                } catch (err) {
+                    showToast("Import Error", true);
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function handlePaletteItemClick(event, roleId) {
+            event.stopPropagation();
+            if (heldPaletteRoleId === roleId) clearActivePaletteSelection();
+            else selectPaletteRole(roleId);
+        }
+
+        function selectPaletteRole(roleId) {
+            heldPaletteRoleId = roleId;
+            const rDef = relationshipDefs.find(r => r.id === roleId);
+            buildPalette();
+            document.body.classList.add("palette-active");
+            const cursorLabel = document.getElementById("custom-cursor-label");
+            if (cursorLabel && rDef) {
+                cursorLabel.textContent = rDef.id === "A_sub" ? "A" : rDef.id;
+                cursorLabel.style.backgroundColor = rDef.hex;
+                cursorLabel.style.display = "block";
+            }
+            document.getElementById("clear-palette-selection-btn").classList.remove("hidden");
+            renderWorkspace();
+        }
+
+        function clearActivePaletteSelection() {
+            heldPaletteRoleId = null;
+            document.body.classList.remove("palette-active");
+            buildPalette();
+            const cursorLabel = document.getElementById("custom-cursor-label");
+            if (cursorLabel) cursorLabel.style.display = "none";
+            document.getElementById("clear-palette-selection-btn").classList.add("hidden");
+            renderWorkspace();
+        }
+
+        window.addEventListener('keydown', (e) => { if (e.key === 'Escape') clearActivePaletteSelection(); });
+        window.addEventListener('mousemove', (e) => {
+            const cursorLabel = document.getElementById("custom-cursor-label");
+            if (cursorLabel && heldPaletteRoleId) {
+                cursorLabel.style.left = `${e.clientX}px`;
+                cursorLabel.style.top = `${e.clientY}px`;
+            }
+        });
+
+        function handleCanvasBackgroundClick(event) {
+            if (heldPaletteRoleId && !event.target.closest('.word-span') && !event.target.closest('.arc-line') && !event.target.closest('.palette-tag-item')) {
+                clearActivePaletteSelection();
+            }
+        }
+
+        function buildPalette() {
+            const categories = ["coord", "sub", "restatement", "distinct", "contrary"];
+            const isThreeSelected = (selectedNodes.length === 3);
+
+            document.getElementById("palette-instructions").textContent = isThreeSelected 
+                ? "Bilateral relation mode active. Assign 'BL' to your 3-way bracket anchor."
+                : "Click a tag to select, then click any bracket position slot to assign it.";
+
+            categories.forEach(cat => {
+                const sectionEl = document.getElementById(`section-${cat}`);
+                const container = document.getElementById(`${cat}-palette`);
+                if (!container) return;
+
+                container.innerHTML = "";
+                let relevantRels = relationshipDefs.filter(r => r.cat === cat);
+
+                if (isThreeSelected) {
+                    relevantRels = relevantRels.filter(r => r.id === "BL");
+                }
+
+                if (relevantRels.length === 0) {
+                    if (sectionEl) sectionEl.classList.add("hidden");
+                    return;
+                } else {
+                    if (sectionEl) sectionEl.classList.remove("hidden");
+                }
+                
+                relevantRels.forEach(rel => {
+                    const el = document.createElement("div");
+                    const isHeld = heldPaletteRoleId === rel.id;
+                    
+                    if (isHeld) {
+                        el.className = `palette-tag-item border text-[10px] font-bold px-2 py-1 rounded text-center shadow-md cursor-pointer transition select-none flex items-center justify-center text-white ring-2 ring-offset-1 ring-slate-800 transform scale-105 ${rel.color.split(' ')[0]}`;
+                    } else {
+                        el.className = `palette-tag-item border text-[10px] font-bold px-2 py-1 rounded text-center shadow-sm cursor-pointer transition select-none flex items-center justify-center bg-white border-slate-200 text-slate-700 hover:${rel.color.split(' ')[0]} hover:text-white`;
+                    }
+                    
+                    el.draggable = true;
+                    el.textContent = rel.id === "A_sub" ? "A" : rel.id;
+                    el.title = rel.label;
+                    el.onclick = (e) => handlePaletteItemClick(e, rel.id);
+                    el.ondragstart = (e) => e.dataTransfer.setData("text/plain", rel.id);
+                    container.appendChild(el);
+                });
+            });
+        }
+
+        async function fetchKJV() {
+            const ref = document.getElementById("passage-ref").value.trim();
+            if (!ref) return;
+            showToast("Fetching scripture...");
+            try {
+                const response = await fetch(`https://bible-api.com/${encodeURIComponent(ref)}?translation=kjv`);
+                if (!response.ok) throw new Error("Passage reference invalid.");
+                const data = await response.json();
+                const mergedText = data.verses.map(v => v.text.trim()).join(" ");
+                saveState();
+                document.getElementById("passage-title").textContent = `Currently Mapping: ${data.reference} (KJV)`;
+                loadRawText(mergedText);
+            } catch (err) {
+                showToast(err.message, true);
+            }
+        }
+
+        function togglePasteModal(visible) { document.getElementById("paste-modal").classList.toggle("hidden", !visible); }
+
+        function importCustomText() {
+            const pasted = document.getElementById("custom-text").value.trim();
+            if (!pasted) return;
+            saveState();
+            document.getElementById("passage-title").textContent = "Mapping Pasted Custom Text";
+            loadRawText(pasted);
+            togglePasteModal(false);
+        }
+
+        function loadRawText(text) {
+            const cleanText = text.replace(/\s+/g, " ");
+            propositions = [cleanText];
+            resetWorkspaceData();
+        }
+
+        function resetWorkspaceData() {
+            nodes = []; arcs = []; selectedNodes = [];
+            propositions.forEach((text, i) => {
+                nodes.push({ id: `L_${i}`, label: `Unit ${i + 1}`, isGroup: false, start: i, end: i, level: 0 });
+            });
+            renderWorkspace();
+            updateSelectionContext();
+        }
+
+        function setMode(mode) {
+            appMode = mode;
+            document.getElementById("mode-split").className = mode === "split" 
+                ? "px-3 py-1.5 text-xs font-semibold rounded-lg bg-blue-600 text-white shadow-sm flex items-center gap-1" 
+                : "px-3 py-1.5 text-xs font-semibold rounded-lg text-slate-600 hover:text-slate-900 transition flex items-center gap-1";
+            document.getElementById("mode-arc").className = mode === "arc" 
+                ? "px-3 py-1.5 text-xs font-semibold rounded-lg text-white shadow-sm flex items-center gap-1" 
+                : "px-3 py-1.5 text-xs font-semibold rounded-lg text-slate-600 hover:text-slate-900 transition flex items-center gap-1";
+            
+            document.getElementById("mode-arc").style.backgroundColor = (mode === "arc") ? "#3B82F6" : "";
+
+            document.getElementById("palette-panel").classList.toggle("hidden", mode !== "arc");
+            document.getElementById("arc-controls").classList.toggle("hidden", mode !== "arc");
+            selectedNodes = [];
+            clearActivePaletteSelection();
+            renderWorkspace();
+        }
+
+        function updateSelectionContext() {
+            const btn = document.getElementById("link-btn");
+            const counter = document.getElementById("selection-counter");
+            if (!btn || !counter) return;
+
+            counter.textContent = selectedNodes.length;
+
+            if (selectedNodes.length >= 2 && selectedNodes.length <= 3) {
+                btn.className = "bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-4 py-1.5 rounded-lg text-xs transition flex items-center gap-1 cursor-pointer shadow-sm";
+            } else {
+                btn.className = "opacity-50 pointer-events-none bg-slate-400 text-white font-semibold px-4 py-1.5 rounded-lg text-xs transition flex items-center gap-1";
+            }
+            buildPalette();
+        }
+
+        function renderWorkspace() {
+            const stack = document.getElementById("proposition-stack");
+            stack.innerHTML = "";
+
+            propositions.forEach((text, i) => {
+                const wrapper = document.createElement("div");
+                wrapper.className = "flex gap-2 items-stretch w-full";
+                wrapper.id = `prop-row-${i}`;
+
+                const propCard = document.createElement("div");
+                propCard.className = "flex-1 p-2 bg-white border border-slate-200 rounded-xl shadow-xs transition duration-150 relative flex flex-row items-center gap-3 min-h-0";
+
+                const leftBadge = document.createElement("div");
+                leftBadge.className = "flex items-center pr-3 border-r border-slate-100 h-full select-none shrink-0";
+                leftBadge.innerHTML = `<span class="text-[9px] font-bold text-slate-400 tracking-wider">U${i + 1}</span>`;
+                propCard.appendChild(leftBadge);
+
+                const contentContainer = document.createElement("div");
+                contentContainer.className = "flex-1 text-left";
+
+                if (appMode === "split") {
+                    const textBlock = document.createElement("div");
+                    textBlock.className = "text-xs leading-relaxed text-slate-700 select-none text-left";
+                    const words = text.split(" ");
+                    words.forEach((word, wordIndex) => {
+                        const wordSpan = document.createElement("span");
+                        wordSpan.className = "word-span";
+                        wordSpan.textContent = word;
+                        textBlock.appendChild(wordSpan);
+
+                        if (wordIndex < words.length - 1) {
+                            const divider = document.createElement("span");
+                            divider.className = "word-divider";
+                            divider.onclick = () => splitProposition(i, wordIndex);
+                            textBlock.appendChild(divider);
+                        }
+                    });
+                    contentContainer.appendChild(textBlock);
+                } else {
+                    const textBlock = document.createElement("div");
+                    textBlock.className = "text-xs leading-relaxed text-slate-800 text-left w-full";
+                    textBlock.textContent = text;
+                    contentContainer.appendChild(textBlock);
+
+                    propCard.classList.add("cursor-pointer", "hover:border-blue-200");
+                    propCard.onclick = () => selectNodeById(`L_${i}`);
+
+                    if (selectedNodes.includes(`L_${i}`)) {
+                        propCard.classList.add("ring-2", "ring-blue-500", "bg-blue-50/20");
+                    }
+                }
+                propCard.appendChild(contentContainer);
+
+                if (appMode === "split" && i < propositions.length - 1) {
+                    const rightAction = document.createElement("div");
+                    rightAction.className = "pl-2 select-none shrink-0";
+                    rightAction.innerHTML = `
+                        <button onclick="mergePropositions(${i})" class="merge-btn bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-500 hover:text-slate-700 text-[9px] font-medium px-1.5 py-1 rounded flex items-center gap-0.5 transition">
+                            <span class="material-icons text-[10px]">arrow_downward</span> Merge
+                        </button>
+                    `;
+                    propCard.appendChild(rightAction);
+                }
+
+                wrapper.appendChild(propCard);
+                stack.appendChild(wrapper);
+            });
+
+            setTimeout(drawVerticalArcs, 100);
+        }
+
+        function splitProposition(propIndex, wordIndex) {
+            saveState();
+            const text = propositions[propIndex];
+            const words = text.split(" ");
+            const leftPart = words.slice(0, wordIndex + 1).join(" ");
+            const rightPart = words.slice(wordIndex + 1).join(" ");
+
+            propositions.splice(propIndex, 1, leftPart, rightPart);
+            shiftIndicesForSplit(propIndex);
+            rebuildNodesAfterChange();
+            updateSelectionContext(); 
+            renderWorkspace();
+        }
+
+        function shiftIndicesForSplit(splitIndex) {
+            nodes.forEach(node => {
+                if (node.start > splitIndex) node.start += 1;
+                if (node.end >= splitIndex) node.end += 1;
+            });
+            arcs.forEach(arc => {
+                if (arc.start > splitIndex) arc.start += 1;
+                if (arc.end >= splitIndex) arc.end += 1;
+            });
+        }
+
+        function mergePropositions(index) {
+            if (index >= propositions.length - 1) return;
+            saveState();
+            const leftText = propositions[index];
+            const rightText = propositions[index + 1];
+            propositions.splice(index, 2, leftText + " " + rightText);
+
+            nodes.forEach(node => {
+                if (node.start > index) node.start -= 1;
+                if (node.end > index) node.end -= 1;
+            });
+            arcs.forEach(arc => {
+                if (arc.start > index) arc.start -= 1;
+                if (arc.end > index) arc.end -= 1;
+            });
+            arcs = arcs.filter(arc => arc.start !== arc.end);
+
+            rebuildNodesAfterChange();
+            updateSelectionContext();
+            renderWorkspace();
+        }
+
+        function recalculateArcLevels() {
+            const sortedArcs = [...arcs].map(arc => ({ ...arc, spanSize: arc.end - arc.start })).sort((a, b) => a.spanSize - b.spanSize);
+            const propositionLevels = Array(propositions.length).fill(0);
+            
+            sortedArcs.forEach(arc => {
+                let maxLevel = 0;
+                for (let i = arc.start; i <= arc.end; i++) maxLevel = Math.max(maxLevel, propositionLevels[i]);
+                const assignedLevel = maxLevel + 1;
+                const realArc = arcs.find(a => a.id === arc.id);
+                if (realArc) realArc.level = assignedLevel;
+                for (let i = arc.start; i <= arc.end; i++) propositionLevels[i] = assignedLevel;
+            });
+        }
+
+        function rebuildNodesAfterChange() {
+            recalculateArcLevels(); 
+            let newNodes = [];
+            propositions.forEach((text, i) => {
+                newNodes.push({ id: `L_${i}`, label: `Unit ${i + 1}`, isGroup: false, start: i, end: i, level: 0 });
+            });
+            arcs.forEach((arc, idx) => {
+                const arcId = arc.id;
+                const groupId = `G_${arcId.split('_')[1] || Date.now()}`;
+                newNodes.push({ id: groupId, label: `G${idx + 1}`, isGroup: true, start: arc.start, end: arc.end, level: arc.level, arcId: arcId });
+            });
+            nodes = newNodes;
+        }
+
+        function selectNodeById(id) {
+            if (appMode !== "arc") return;
+            const idx = selectedNodes.indexOf(id);
+            if (idx > -1) {
+                selectedNodes.splice(idx, 1);
+            } else {
+                if (selectedNodes.length >= 3) selectedNodes.shift();
+                selectedNodes.push(id);
+            }
+            updateSelectionContext();
+            renderWorkspace();
+        }
+
+        function getVerticalCenterForRange(startUnit, endUnit) {
+            const elStart = document.getElementById(`prop-row-${startUnit}`);
+            const elEnd = document.getElementById(`prop-row-${endUnit}`);
+            if (!elStart || !elEnd) return 0;
+            return (elStart.offsetTop + (elStart.offsetHeight / 2) + elEnd.offsetTop + (elEnd.offsetHeight / 2)) / 2;
+        }
+
+        function drawVerticalArcs() {
+            const canvas = document.getElementById("arc-canvas");
+            const labelsContainer = document.getElementById("interactive-labels");
+            canvas.innerHTML = "";
+            labelsContainer.innerHTML = "";
+
+            if (arcs.length === 0) return;
+            const propPanel = document.getElementById("proposition-panel");
+            canvas.style.height = `${propPanel.scrollHeight}px`;
+            labelsContainer.style.height = `${propPanel.scrollHeight}px`;
+
+            arcs.forEach((arc, idx) => {
+                let topY = 0, midY = 0, botY = 0;
+                let topXOffset = 10, midXOffset = 10, botXOffset = 10;
+                const isTrilateral = (arc.midStart !== undefined && arc.midEnd !== undefined);
+
+                const leftChild = arcs.find(a => a.id !== arc.id && a.start === arc.start && a.end < arc.end);
+                if (leftChild) {
+                    topY = getVerticalCenterForRange(leftChild.start, leftChild.end);
+                    topXOffset = 40 + (leftChild.level * 30); 
+                } else {
+                    const elStart = document.getElementById(`prop-row-${arc.start}`);
+                    topY = elStart ? elStart.offsetTop + (elStart.offsetHeight / 2) : 0;
+                }
+
+                const rightChild = arcs.find(a => a.id !== arc.id && a.end === arc.end && a.start > arc.start);
+                if (rightChild) {
+                    botY = getVerticalCenterForRange(rightChild.start, rightChild.end);
+                    botXOffset = 40 + (rightChild.level * 30); 
+                } else {
+                    const elEnd = document.getElementById(`prop-row-${arc.end}`);
+                    botY = elEnd ? elEnd.offsetTop + (elEnd.offsetHeight / 2) : 0;
+                }
+
+                const bracketWidth = 40 + (arc.level * 30);
+                const r = 12;
+                let pathData = "";
+
+                if (isTrilateral) {
+                    const midChild = arcs.find(a => a.id !== arc.id && a.start === arc.midStart && a.end === arc.midEnd);
+                    midY = midChild ? getVerticalCenterForRange(midChild.start, midChild.end) : getVerticalCenterForRange(arc.midStart, arc.midEnd);
+                    midXOffset = midChild ? 40 + (midChild.level * 30) : 10;
+
+                    pathData = `
+                        M ${topXOffset} ${topY} L ${bracketWidth - r} ${topY} A ${r} ${r} 0 0 1 ${bracketWidth} ${topY + r}
+                        L ${bracketWidth} ${midY} L ${midXOffset} ${midY} M ${bracketWidth} ${midY}
+                        L ${bracketWidth} ${botY - r} A ${r} ${r} 0 0 1 ${bracketWidth - r} ${botY} L ${botXOffset} ${botY}
+                    `;
+                } else {
+                    pathData = `
+                        M ${topXOffset} ${topY} L ${bracketWidth - r} ${topY} A ${r} ${r} 0 0 1 ${bracketWidth} ${topY + r}
+                        L ${bracketWidth} ${botY - r} A ${r} ${r} 0 0 1 ${bracketWidth - r} ${botY} L ${botXOffset} ${botY}
+                    `;
+                }
+
+                const groupNode = nodes.find(n => n.arcId === arc.id);
+                const isSelected = groupNode && selectedNodes.includes(groupNode.id);
+                let arcStrokeColor = "#64748b";
+                let activeRoleSample = arc.roleCenter || arc.roleStart || arc.roleEnd;
+                if (activeRoleSample) {
+                    const rDef = relationshipDefs.find(r => r.id === activeRoleSample);
+                    if (rDef) arcStrokeColor = rDef.hex;
+                }
+
+                const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+                path.setAttribute("d", pathData);
+                path.setAttribute("class", isSelected ? "arc-line active" : "arc-line");
+                path.setAttribute("style", isSelected ? `stroke: #3B82F6;` : `stroke: ${arcStrokeColor};`);
+                canvas.appendChild(path);
+
+                const computedMidY = isTrilateral ? midY : (topY + botY) / 2;
+                const dragOffset = bracketWidth - 14;
+
+                if (isCenterPlacementType(arc.roleCenter) || isCenterPlacementType(heldPaletteRoleId) || isTrilateral) {
+                    createInteractiveSlot(bracketWidth, computedMidY, arc.id, 'center', arc.roleCenter || (isTrilateral ? "BL" : null), arc.start, arc.end);
+                    createSelectionBadge(bracketWidth, computedMidY - 22, arc.id, groupNode ? groupNode.id : null, idx + 1, arcStrokeColor);
+                    createDeleteHandle(bracketWidth, computedMidY + 22, arc.id);
+                } else {
+                    createInteractiveSlot(dragOffset, topY, arc.id, 'start', arc.roleStart, arc.start, arc.end);
+                    createInteractiveSlot(dragOffset, botY, arc.id, 'end', arc.roleEnd, arc.start, arc.end);
+                    createSelectionBadge(bracketWidth, computedMidY - 12, arc.id, groupNode ? groupNode.id : null, idx + 1, arcStrokeColor);
+                    createDeleteHandle(bracketWidth, computedMidY + 12, arc.id);
+                }
+            });
+        }
+
+        function createInteractiveSlot(x, y, arcId, position, currentRole, start, end) {
+            const labelsContainer = document.getElementById("interactive-labels");
+            const slot = document.createElement("div");
+            slot.style.left = `${x}px`; slot.style.top = `${y}px`; slot.style.pointerEvents = "auto";
+            slot.className = "interactive-target-slot absolute -translate-x-1/2 -translate-y-1/2 w-6 h-6 rounded-full flex items-center justify-center font-bold text-[9px] select-none cursor-pointer transition shadow-xs border border-transparent";
+            
+            if (currentRole) {
+                slot.classList.add("has-role");
+                const rDef = relationshipDefs.find(r => r.id === currentRole);
+                slot.style.backgroundColor = rDef ? rDef.hex : "#3B82F6";
+                slot.className += " text-white";
+                slot.textContent = currentRole === "A_sub" ? "A" : currentRole;
+            } else {
+                slot.className += " bg-transparent text-transparent hover:border-slate-400/40 hover:bg-slate-200/50";
+            }
+
+            slot.onclick = (e) => {
+                e.stopPropagation();
+                if (heldPaletteRoleId) {
+                    updateArcRole(arcId, position, heldPaletteRoleId);
+                    clearActivePaletteSelection();
+                } else if (currentRole) {
+                    updateArcRole(arcId, position, null);
+                }
+            };
+            labelsContainer.appendChild(slot);
+        }
+
+        function createSelectionBadge(x, y, arcId, groupId, displayIndex, strokeColor) {
+            if (!groupId) return;
+            const labelsContainer = document.getElementById("interactive-labels");
+            const badge = document.createElement("div");
+            badge.style.left = `${x}px`; badge.style.top = `${y}px`; badge.style.pointerEvents = "auto";
+            
+            const isSelected = selectedNodes.includes(groupId);
+            badge.className = isSelected 
+                ? "absolute -translate-x-1/2 -translate-y-1/2 px-1.5 py-0.5 rounded border text-[8px] font-semibold cursor-pointer text-white bg-blue-500 border-blue-500"
+                : "absolute -translate-x-1/2 -translate-y-1/2 px-1.5 py-0.5 rounded border text-[8px] font-bold cursor-pointer bg-slate-100 border-slate-200 text-slate-600";
+            
+            if (!isSelected && strokeColor !== "#64748b") {
+                badge.style.borderColor = strokeColor;
+                badge.style.color = strokeColor;
+            }
+            badge.textContent = `G${displayIndex}`;
+            badge.onclick = (e) => { e.stopPropagation(); selectNodeById(groupId); };
+            labelsContainer.appendChild(badge);
+        }
+
+        function createDeleteHandle(x, y, arcId) {
+            const labelsContainer = document.getElementById("interactive-labels");
+            const btn = document.createElement("button");
+            btn.style.left = `${x}px`; btn.style.top = `${y}px`; btn.style.pointerEvents = "auto";
+            btn.className = "absolute -translate-x-1/2 -translate-y-1/2 bg-rose-500 text-white w-4.5 h-4.5 rounded-full flex items-center justify-center shadow-md";
+            btn.innerHTML = `<span class="material-icons text-[9px] font-bold">close</span>`;
+            btn.onclick = (e) => { e.stopPropagation(); deleteArcById(arcId); };
+            labelsContainer.appendChild(btn);
+        }
+
+        function updateArcRole(arcId, position, roleId) {
+            saveState();
+            const arc = arcs.find(a => a.id === arcId);
+            if (arc) {
+                if (position === 'center') {
+                    arc.roleCenter = roleId; arc.roleStart = null; arc.roleEnd = null;
+                } else {
+                    if (position === 'start') arc.roleStart = roleId;
+                    if (position === 'end') arc.roleEnd = roleId;
+                    arc.roleCenter = null;
+                }
+                renderWorkspace();
+            }
+        }
+
+        function createArc() {
+            const sortedSelected = [...selectedNodes].map(id => nodes.find(n => n.id === id)).filter(Boolean);
+            sortedSelected.sort((a, b) => a.start - b.start);
+            if (sortedSelected.length < 2 || sortedSelected.length > 3) return;
+
+            for(let i = 0; i < sortedSelected.length - 1; i++) {
+                if (sortedSelected[i].end >= sortedSelected[i+1].start) {
+                    showToast("Nodes overlap.", true);
+                    return;
+                }
+            }
+
+            saveState();
+            const firstNode = sortedSelected[0];
+            const lastNode = sortedSelected[sortedSelected.length - 1];
+            const maxChildLevel = Math.max(...sortedSelected.map(n => n.level));
+
+            const arcId = `arc_${Date.now()}`;
+            const newArc = {
+                id: arcId, start: firstNode.start, end: lastNode.end, level: maxChildLevel + 1,
+                roleStart: null, roleEnd: null, roleCenter: (sortedSelected.length === 3) ? "BL" : null
+            };
+
+            if (sortedSelected.length === 3) {
+                newArc.midStart = sortedSelected[1].start;
+                newArc.midEnd = sortedSelected[1].end;
+            }
+
+            arcs.push(newArc);
+            rebuildNodesAfterChange();
+            selectedNodes = [];
+            updateSelectionContext();
+            renderWorkspace();
+        }
+
+        function deleteArcById(arcId) {
+            saveState();
+            arcs = arcs.filter(a => a.id !== arcId);
+            rebuildNodesAfterChange();
+            updateSelectionContext();
+            renderWorkspace();
+        }
+
+        function resetPassage() {
+            saveState();
+            resetWorkspaceData();
+        }
+
+        function showToast(message, isError = false) {
+            const toast = document.getElementById("toast");
+            const text = document.getElementById("toast-text");
+            text.textContent = message;
+            toast.className = isError ? "bg-rose-50 border-b border-rose-200 px-6 py-1.5 text-xs text-rose-700 flex items-center gap-2" : "bg-blue-50 border-b border-blue-200 px-6 py-1.5 text-xs text-blue-700 flex items-center gap-2";
+            toast.classList.remove("hidden");
+            setTimeout(() => toast.classList.add("hidden"), 4000);
+        }
+
+        window.onload = () => {
+            loadRawText(defaultReferenceText);
+            setMode("split"); 
+        }
+        window.onresize = drawVerticalArcs;
+    </script>
+</body>
+</html>
