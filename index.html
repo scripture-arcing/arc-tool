@@ -77,7 +77,7 @@
         }
         @media print {
             body { background: white !important; color: black !important; padding: 0 !important; margin: 0 !important; }
-            header, #palette-panel, .bg-slate-100, button, .word-divider, .undo-btn, .merge-btn, #custom-cursor-label, #note-column-panel { display: none !important; }
+            header, #palette-panel, .bg-slate-100, button, .word-divider, .undo-btn, .merge-btn, #custom-cursor-label, #note-column-panel, #cheat-sheet-modal, #paste-modal { display: none !important; }
             .container, .max-w-full { border: none !important; box-shadow: none !important; padding: 0 !important; margin: 0 !important; width: 100% !important; }
             .flex-1.flex.flex-col { display: flex !important; flex-direction: row !important; }
             #proposition-panel { width: 50% !important; border-right: 1px solid #dee2e6 !important; }
@@ -99,19 +99,19 @@
                     <span class="material-icons text-blue-400 font-bold">account_tree</span>
                     Scripture Arcing Tool
                 </h1>
-                <p class="text-slate-400 text-xs mt-0.5" id="passage-title">Active Bible Engine</p>
+                <p class="text-slate-400 text-xs mt-0.5" id="passage-title">No passage loaded</p>
             </div>
             
             <form onsubmit="handleFetchSubmit(event)" class="flex flex-wrap gap-2 w-full lg:w-auto items-center">
                 <select id="bible-translation" class="bg-slate-800 text-white border border-slate-700 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium">
-                    <option value="kjv">KJV (King James)</option>
                     <option value="web">WEB (World English Bible)</option>
+                    <option value="kjv">KJV (King James)</option>
                 </select>
 
                 <select id="bible-book" class="bg-slate-800 text-white border border-slate-700 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 w-full lg:w-36">
                 </select>
                 
-                <input type="text" id="passage-ref" value="4:1-8" 
+                <input type="text" id="passage-ref" value="" 
                        class="bg-slate-800 text-white border border-slate-700 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 w-full lg:w-28"
                        placeholder="e.g., 1:16-17">
                        
@@ -181,11 +181,17 @@
         <div class="flex-1 flex flex-col lg:flex-row relative overflow-hidden" onclick="handleCanvasBackgroundClick(event)">
             
             <div id="palette-panel" class="hidden lg:flex w-full lg:w-52 bg-slate-50 border-r border-slate-200 p-3 flex-col gap-3 overflow-y-auto h-full notranslate" translate="no">
-                <div class="flex justify-between items-center border-b pb-1">
-                    <h3 class="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
-                        <span class="material-icons text-xs">palette</span> Relationship Palette
-                    </h3>
-                    <button id="clear-palette-selection-btn" onclick="clearActivePaletteSelection()" class="hidden text-[9px] bg-slate-200 hover:bg-slate-300 text-slate-700 px-1 py-0.5 rounded font-medium">Cancel</button>
+                <div class="flex flex-col gap-1 border-b pb-2">
+                    <div class="flex justify-between items-center">
+                        <h3 class="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                            <span class="material-icons text-xs">palette</span> Relationship Palette
+                        </h3>
+                        <button id="clear-palette-selection-btn" onclick="clearActivePaletteSelection()" class="hidden text-[9px] bg-slate-200 hover:bg-slate-300 text-slate-700 px-1 py-0.5 rounded font-medium">Cancel</button>
+                    </div>
+                    <!-- Relationship Cheat Sheet Trigger Button -->
+                    <button type="button" onclick="toggleCheatSheetModal(true)" class="mt-1 w-full bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 text-[10px] font-semibold py-1 px-2 rounded-md transition flex items-center justify-center gap-1">
+                        <span class="material-icons text-xs">help_outline</span> Relationship Cheat Sheet
+                    </button>
                 </div>
                 <p class="text-[10px] text-slate-400 leading-normal" id="palette-instructions">Click a tag to select, then click any bracket position slot to assign it.</p>
                 
@@ -231,12 +237,13 @@
 
             <!-- Notes Column -->
             <div class="w-full lg:w-[22%] bg-slate-50 p-4 overflow-y-auto h-full flex flex-col gap-2" id="note-column-panel">
-                <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5 px-1">Exegetical Comment Matrix</div>
+                <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5 px-1">Comments</div>
                 <div class="space-y-1.5 flex flex-col h-full" id="note-stack-container"></div>
             </div>
         </div>
     </div>
 
+    <!-- Custom Text Paste Modal -->
     <div id="paste-modal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
         <div class="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 flex flex-col gap-4">
             <div class="flex justify-between items-center">
@@ -249,6 +256,150 @@
             <div class="flex justify-end gap-2">
                 <button onclick="togglePasteModal(false)" class="bg-slate-100 hover:bg-slate-200 px-4 py-2 rounded-lg text-sm font-semibold transition">Cancel</button>
                 <button onclick="importCustomText()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-semibold transition">Load Custom Passage</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Relationship Cheat Sheet Modal -->
+    <div id="cheat-sheet-modal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4" onclick="handleCheatSheetBackdropClick(event)">
+        <div class="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] p-6 shadow-2xl border border-slate-100 flex flex-col gap-4 overflow-hidden">
+            <div class="flex justify-between items-center border-b pb-3 shrink-0">
+                <div class="flex items-center gap-2">
+                    <span class="material-icons text-blue-600">menu_book</span>
+                    <h3 class="text-lg font-bold text-slate-800">Relationship Cheat Sheet</h3>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button onclick="downloadCheatSheet()" class="bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition flex items-center gap-1 shadow-xs">
+                        <span class="material-icons text-sm">download</span> Download Cheat Sheet
+                    </button>
+                    <button onclick="toggleCheatSheetModal(false)" class="text-slate-400 hover:text-slate-600 p-1">
+                        <span class="material-icons">close</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Scrollable Content Table with Visually Distinct Categories -->
+            <div class="overflow-y-auto flex-1 pr-1" id="cheat-sheet-printable">
+                <table class="w-full text-left text-xs border-collapse">
+                    <thead>
+                        <tr class="bg-slate-800 text-white">
+                            <th class="p-2.5 font-bold w-1/4">Relationship</th>
+                            <th class="p-2.5 font-bold w-1/2">Quick Definition</th>
+                            <th class="p-2.5 font-bold w-1/4">Common Signals</th>
+                        </tr>
+                    </thead>
+                    <tbody class="text-slate-700">
+                        <!-- CATEGORY 1: Coordinate -->
+                        <tr class="bg-blue-600 text-white font-bold uppercase tracking-wider text-[10px]">
+                            <td colspan="3" class="px-3 py-1.5">Coordinate Relationships</td>
+                        </tr>
+                        <tr class="border-b border-slate-100 border-l-4 border-l-blue-500 hover:bg-blue-50/40">
+                            <td class="p-2.5 font-bold text-blue-700">Series (S)</td>
+                            <td class="p-2.5">Multiple statements each contribute another related idea.</td>
+                            <td class="p-2.5 italic text-slate-500">and, also, both, neither/nor</td>
+                        </tr>
+                        <tr class="border-b border-slate-100 border-l-4 border-l-blue-500 hover:bg-blue-50/40">
+                            <td class="p-2.5 font-bold text-blue-700">Progression (P)</td>
+                            <td class="p-2.5">Ideas build step-by-step toward a climax or completion.</td>
+                            <td class="p-2.5 italic text-slate-500">then, next, finally</td>
+                        </tr>
+                        <tr class="border-b-2 border-slate-200 border-l-4 border-l-blue-500 hover:bg-blue-50/40">
+                            <td class="p-2.5 font-bold text-blue-700">Alternative (A)</td>
+                            <td class="p-2.5">Presents two or more possible options or choices.</td>
+                            <td class="p-2.5 italic text-slate-500">or, either/or, alternatively</td>
+                        </tr>
+
+                        <!-- CATEGORY 2: Restatement -->
+                        <tr class="bg-emerald-600 text-white font-bold uppercase tracking-wider text-[10px]">
+                            <td colspan="3" class="px-3 py-1.5">Subordinate: Restatement</td>
+                        </tr>
+                        <tr class="border-b border-slate-100 border-l-4 border-l-emerald-500 hover:bg-emerald-50/40">
+                            <td class="p-2.5 font-bold text-emerald-700">Action–Manner (Ac/Mn)</td>
+                            <td class="p-2.5">Explains how an action happens or the means used.</td>
+                            <td class="p-2.5 italic text-slate-500">by, through, by means of</td>
+                        </tr>
+                        <tr class="border-b border-slate-100 border-l-4 border-l-emerald-500 hover:bg-emerald-50/40">
+                            <td class="p-2.5 font-bold text-emerald-700">Comparison (Cf)</td>
+                            <td class="p-2.5">Explains something by comparing it to something similar.</td>
+                            <td class="p-2.5 italic text-slate-500">like, as, just as</td>
+                        </tr>
+                        <tr class="border-b border-slate-100 border-l-4 border-l-emerald-500 hover:bg-emerald-50/40">
+                            <td class="p-2.5 font-bold text-emerald-700">Negative–Positive (-/+)</td>
+                            <td class="p-2.5">Rejects one idea to emphasize another.</td>
+                            <td class="p-2.5 italic text-slate-500">not...but, instead</td>
+                        </tr>
+                        <tr class="border-b border-slate-100 border-l-4 border-l-emerald-500 hover:bg-emerald-50/40">
+                            <td class="p-2.5 font-bold text-emerald-700">Idea–Explanation (Id/Exp)</td>
+                            <td class="p-2.5">Expands, defines, or clarifies a previous statement.</td>
+                            <td class="p-2.5 italic text-slate-500">that is, in other words, namely</td>
+                        </tr>
+                        <tr class="border-b-2 border-slate-200 border-l-4 border-l-emerald-500 hover:bg-emerald-50/40">
+                            <td class="p-2.5 font-bold text-emerald-700">Question–Answer (Q/Ans)</td>
+                            <td class="p-2.5">Raises a question and immediately answers it.</td>
+                            <td class="p-2.5 italic text-slate-500">question followed by response</td>
+                        </tr>
+
+                        <!-- CATEGORY 3: Distinct Statement -->
+                        <tr class="bg-purple-600 text-white font-bold uppercase tracking-wider text-[10px]">
+                            <td colspan="3" class="px-3 py-1.5">Subordinate: Distinct Statement</td>
+                        </tr>
+                        <tr class="border-b border-slate-100 border-l-4 border-l-purple-500 hover:bg-purple-50/40">
+                            <td class="p-2.5 font-bold text-purple-700">Ground (G)</td>
+                            <td class="p-2.5">A claim is followed by the reason supporting it.</td>
+                            <td class="p-2.5 italic text-slate-500">because, since, for</td>
+                        </tr>
+                        <tr class="border-b border-slate-100 border-l-4 border-l-purple-500 hover:bg-purple-50/40">
+                            <td class="p-2.5 font-bold text-purple-700">Inference (∴)</td>
+                            <td class="p-2.5">A conclusion is drawn from what came before.</td>
+                            <td class="p-2.5 italic text-slate-500">therefore, so, thus</td>
+                        </tr>
+                        <tr class="border-b border-slate-100 border-l-4 border-l-purple-500 hover:bg-purple-50/40">
+                            <td class="p-2.5 font-bold text-purple-700">Bilateral (BL)</td>
+                            <td class="p-2.5">One statement supports both the statement before and after it.</td>
+                            <td class="p-2.5 italic text-slate-500">because, therefore (context-dependent)</td>
+                        </tr>
+                        <tr class="border-b border-slate-100 border-l-4 border-l-purple-500 hover:bg-purple-50/40">
+                            <td class="p-2.5 font-bold text-purple-700">Action–Result (Ac/Res)</td>
+                            <td class="p-2.5">An action naturally produces an outcome.</td>
+                            <td class="p-2.5 italic text-slate-500">so that, resulting in</td>
+                        </tr>
+                        <tr class="border-b border-slate-100 border-l-4 border-l-purple-500 hover:bg-purple-50/40">
+                            <td class="p-2.5 font-bold text-purple-700">Action–Purpose (Ac/Pur)</td>
+                            <td class="p-2.5">An action is done to accomplish a goal.</td>
+                            <td class="p-2.5 italic text-slate-500">in order to, so that</td>
+                        </tr>
+                        <tr class="border-b border-slate-100 border-l-4 border-l-purple-500 hover:bg-purple-50/40">
+                            <td class="p-2.5 font-bold text-purple-700">Conditional (If/Then)</td>
+                            <td class="p-2.5">A result depends on whether a condition is met.</td>
+                            <td class="p-2.5 italic text-slate-500">if...then, unless</td>
+                        </tr>
+                        <tr class="border-b border-slate-100 border-l-4 border-l-purple-500 hover:bg-purple-50/40">
+                            <td class="p-2.5 font-bold text-purple-700">Temporal (T)</td>
+                            <td class="p-2.5">Explains when something happens or is true.</td>
+                            <td class="p-2.5 italic text-slate-500">when, before, after, whenever</td>
+                        </tr>
+                        <tr class="border-b-2 border-slate-200 border-l-4 border-l-purple-500 hover:bg-purple-50/40">
+                            <td class="p-2.5 font-bold text-purple-700">Locative (L)</td>
+                            <td class="p-2.5">Explains where something happens or applies.</td>
+                            <td class="p-2.5 italic text-slate-500">where, wherever</td>
+                        </tr>
+
+                        <!-- CATEGORY 4: Contrary Statement -->
+                        <tr class="bg-amber-600 text-white font-bold uppercase tracking-wider text-[10px]">
+                            <td colspan="3" class="px-3 py-1.5">Subordinate: Contrary Statement</td>
+                        </tr>
+                        <tr class="border-b border-slate-100 border-l-4 border-l-amber-500 hover:bg-amber-50/40">
+                            <td class="p-2.5 font-bold text-amber-700">Concessive (Csv)</td>
+                            <td class="p-2.5">The main point remains true despite an opposing circumstance.</td>
+                            <td class="p-2.5 italic text-slate-500">although, even though, yet, nevertheless</td>
+                        </tr>
+                        <tr class="border-b border-slate-100 border-l-4 border-l-amber-500 hover:bg-amber-50/40">
+                            <td class="p-2.5 font-bold text-amber-700">Situation–Response (Sit/R)</td>
+                            <td class="p-2.5">A circumstance is followed by an unexpected or surprising reaction.</td>
+                            <td class="p-2.5 italic text-slate-500">context-dependent (often joined by "and")</td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
         </div>
     </div>
@@ -289,7 +440,7 @@
             { id: "Id", label: "Idea (Id)", cat: "restatement", hex: "#22C55E", color: "bg-green-500 text-white border-green-500 hover:bg-green-600" },
             { id: "Exp", label: "Explanation (Exp)", cat: "restatement", hex: "#22C55E", color: "bg-green-500 text-white border-green-500 hover:bg-green-600" },
             { id: "Q", label: "Question (Q)", cat: "restatement", hex: "#22C55E", color: "bg-green-500 text-white border-green-500 hover:bg-green-600" },
-            { id: "A_sub", label: "Answer (A)", cat: "restatement", hex: "#22C55E", color: "bg-green-500 text-white border-green-500 hover:bg-green-600" },
+            { id: "Ans", label: "Answer (Ans)", cat: "restatement", hex: "#22C55E", color: "bg-green-500 text-white border-green-500 hover:bg-green-600" },
             { id: "G", label: "Ground (G)", cat: "distinct", hex: "#A855F7", color: "bg-purple-500 text-white border-purple-500 hover:bg-purple-600" },
             { id: "∴", label: "Inference (∴)", cat: "distinct", hex: "#A855F7", color: "bg-purple-500 text-white border-purple-500 hover:bg-purple-600" },
             { id: "BL", label: "Bilateral (BL)", cat: "distinct", hex: "#A855F7", color: "bg-purple-500 text-white border-purple-500 hover:bg-purple-600" },
@@ -301,6 +452,45 @@
             { id: "Csv", label: "Concessive (Csv)", cat: "contrary", hex: "#F59E0B", color: "bg-amber-500 text-white border-amber-500 hover:bg-amber-600" },
             { id: "Sit", label: "Situation (Sit)", cat: "contrary", hex: "#F59E0B", color: "bg-amber-500 text-white border-amber-500 hover:bg-amber-600" }
         ];
+
+        function toggleCheatSheetModal(visible) {
+            document.getElementById("cheat-sheet-modal").classList.toggle("hidden", !visible);
+        }
+
+        function handleCheatSheetBackdropClick(event) {
+            if (event.target.id === "cheat-sheet-modal") {
+                toggleCheatSheetModal(false);
+            }
+        }
+
+        function downloadCheatSheet() {
+            const tableHTML = document.getElementById("cheat-sheet-printable").innerHTML;
+            const printWindow = window.open('', '', 'width=900,height=700');
+            printWindow.document.write(`
+                <html>
+                    <head>
+                        <title>Relationship Cheat Sheet</title>
+                        <script src="https://cdn.tailwindcss.com"><\/script>
+                        <style>
+                            body { font-family: 'Inter', sans-serif; padding: 20px; }
+                            table { width: 100%; border-collapse: collapse; }
+                            th, td { border: 1px solid #e2e8f0; }
+                        </style>
+                    </head>
+                    <body>
+                        <h2 style="font-size: 18px; font-weight: bold; margin-bottom: 16px;">Relationship Cheat Sheet</h2>
+                        ${tableHTML}
+                        <script>
+                            window.onload = function() {
+                                window.print();
+                                window.close();
+                            };
+                        <\/script>
+                    </body>
+                </html>
+            `);
+            printWindow.document.close();
+        }
 
         function isCenterPlacementType(roleId) {
             if (!roleId) return false;
@@ -352,7 +542,7 @@
             const bookName = document.getElementById("bible-book").value;
             const refName = document.getElementById("passage-ref").value.trim();
             const translationName = document.getElementById("bible-translation").value.toUpperCase();
-            const passageName = `${bookName} ${refName} (${translationName})` || "untitled-passage";
+            const passageName = refName ? `${bookName} ${refName} (${translationName})` : "untitled-passage";
             const payload = { passage: passageName, propositions, arcs, nodes, selectedNodes, notesCache };
             const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(payload));
             const downloadAnchor = document.createElement('a');
@@ -403,7 +593,7 @@
             document.body.classList.add("palette-active");
             const cursorLabel = document.getElementById("custom-cursor-label");
             if (cursorLabel && rDef) {
-                cursorLabel.textContent = rDef.id === "A_sub" ? "A" : rDef.id;
+                cursorLabel.textContent = rDef.id;
                 cursorLabel.style.backgroundColor = rDef.hex;
                 cursorLabel.style.display = "block";
             }
@@ -421,7 +611,13 @@
             renderWorkspace();
         }
 
-        window.addEventListener('keydown', (e) => { if (e.key === 'Escape') clearActivePaletteSelection(); });
+        window.addEventListener('keydown', (e) => { 
+            if (e.key === 'Escape') {
+                clearActivePaletteSelection();
+                toggleCheatSheetModal(false);
+            }
+        });
+        
         window.addEventListener('mousemove', (e) => {
             const cursorLabel = document.getElementById("custom-cursor-label");
             if (cursorLabel && heldPaletteRoleId) {
@@ -474,7 +670,7 @@
                     }
                     
                     el.draggable = true;
-                    el.textContent = rel.id === "A_sub" ? "A" : rel.id;
+                    el.textContent = rel.id;
                     el.title = rel.label;
                     el.onclick = (e) => handlePaletteItemClick(e, rel.id);
                     el.ondragstart = (e) => e.dataTransfer.setData("text/plain", rel.id);
@@ -590,6 +786,18 @@
             
             stack.innerHTML = "";
             notesContainer.innerHTML = "";
+
+            if (propositions.length === 0) {
+                const emptyPrompt = document.createElement("div");
+                emptyPrompt.className = "py-16 text-center text-slate-400 text-xs font-medium flex flex-col items-center justify-center gap-2 select-none";
+                emptyPrompt.innerHTML = `
+                    <span class="material-icons text-slate-300 text-3xl">menu_book</span>
+                    <span>Select a passage or paste text above to get started.</span>
+                `;
+                stack.appendChild(emptyPrompt);
+                drawVerticalArcs();
+                return;
+            }
 
             propositions.forEach((prop, i) => {
                 const wrapper = document.createElement("div");
@@ -937,7 +1145,7 @@
                 const rDef = relationshipDefs.find(r => r.id === currentRole);
                 slot.style.backgroundColor = rDef ? rDef.hex : "#3B82F6";
                 slot.className += " text-white";
-                slot.textContent = currentRole === "A_sub" ? "A" : currentRole;
+                slot.textContent = currentRole;
             } else {
                 slot.className += " bg-transparent text-transparent hover:border-slate-400/40 hover:bg-slate-200/50";
             }
@@ -1044,7 +1252,9 @@
 
         function resetPassage() {
             saveState();
+            propositions = [];
             resetWorkspaceData();
+            document.getElementById("passage-title").textContent = "No passage loaded";
         }
 
         function showToast(message, isError = false) {
@@ -1063,17 +1273,16 @@
                 const opt = document.createElement("option");
                 opt.value = book;
                 opt.textContent = book;
-                if (book === "1 Thessalonians") opt.selected = true;
                 selectEl.appendChild(opt);
             });
         }
 
         window.addEventListener("resize", adjustNoteHeights);
 
-        window.onload = async () => {
+        window.onload = () => {
             initializeBookSelect();
-            setMode("split"); 
-            await fetchScripture();
+            setMode("split");
+            renderWorkspace();
         }
     </script>
 </body>
